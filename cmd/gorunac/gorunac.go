@@ -122,17 +122,25 @@ func run(ctx context.Context, bin string, args ...string) error {
 
 func compile(ctx context.Context, args ...string) (string, error) {
 	cmd := exec.CommandContext(ctx, "go", append([]string{"build", "-o", "./bin/linux/"}, args...)...)
-	cmd.Env = os.Environ()
+	cmd.Env = nil
+	for _, e := range os.Environ() {
+		if !strings.HasPrefix(e, "GOOS=") && !strings.HasPrefix(e, "GOARCH=") {
+			cmd.Env = append(cmd.Env, e)
+		}
+	}
 	cmd.Env = append(cmd.Env, "GOOS=linux")
 	cmd.Env = append(cmd.Env, "GOARCH=arm64")
 
+	slog.DebugContext(ctx, "compile go build", "cmd.Args", cmd.Args, "cmd.Env", cmd.Env)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		slog.ErrorContext(ctx, "compile go build", "error", err, "out", string(out))
 		return "", err
 	}
 
-	out, err = exec.Command("go", append([]string{"list", "-f", "{{.Target}}"}, args...)...).CombinedOutput()
+	goCmd := exec.Command("go", append([]string{"list", "-f", "{{.Target}}"}, args...)...)
+	goCmd.Env = cmd.Env
+	out, err = goCmd.CombinedOutput()
 	if err != nil {
 		slog.ErrorContext(ctx, "compile go list", "error", err, "out", string(out))
 		return "", err
